@@ -1,0 +1,105 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<mule xmlns:tracking="http://www.mulesoft.org/schema/mule/ee/tracking" xmlns:dw="http://www.mulesoft.org/schema/mule/ee/dw" xmlns:json="http://www.mulesoft.org/schema/mule/json" xmlns:metadata="http://www.mulesoft.org/schema/mule/metadata" xmlns:doc="http://www.mulesoft.org/schema/mule/documentation" xmlns="http://www.mulesoft.org/schema/mule/core" xmlns:apikit="http://www.mulesoft.org/schema/mule/apikit" xmlns:http="http://www.mulesoft.org/schema/mule/http" xmlns:spring="http://www.springframework.org/schema/beans" xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance" xsi:schemaLocation="http://www.mulesoft.org/schema/mule/core http://www.mulesoft.org/schema/mule/core/current/mule.xsd
+http://www.mulesoft.org/schema/mule/http http://www.mulesoft.org/schema/mule/http/current/mule-http.xsd
+http://www.mulesoft.org/schema/mule/apikit http://www.mulesoft.org/schema/mule/apikit/current/mule-apikit.xsd
+http://www.springframework.org/schema/beans http://www.springframework.org/schema/beans/spring-beans-3.1.xsd
+http://www.mulesoft.org/schema/mule/ee/dw http://www.mulesoft.org/schema/mule/ee/dw/current/dw.xsd
+http://www.mulesoft.org/schema/mule/json http://www.mulesoft.org/schema/mule/json/current/mule-json.xsd
+http://www.mulesoft.org/schema/mule/ee/tracking http://www.mulesoft.org/schema/mule/ee/tracking/current/mule-tracking-ee.xsd">
+    <http:listener-config name="br-order-sys-api-httpListenerConfig" host="0.0.0.0" port="8081" doc:name="HTTP Listener Configuration"/>
+    <apikit:config name="br-order-sys-api-config" raml="br-order-sys-api.raml" consoleEnabled="false" doc:name="Router"/>
+    <flow name="br-order-sys-api-main">
+        <http:listener config-ref="br-order-sys-api-httpListenerConfig" path="/api/*" doc:name="HTTP"/>
+        <apikit:router config-ref="br-order-sys-api-config" doc:name="APIkit Router"/>
+        <exception-strategy ref="br-order-sys-api-apiKitGlobalExceptionMapping" doc:name="Reference Exception Strategy"/>
+    </flow>
+    <flow name="br-order-sys-api-console">
+        <http:listener config-ref="br-order-sys-api-httpListenerConfig" path="/console/*" doc:name="HTTP"/>
+        <apikit:console config-ref="br-order-sys-api-config" doc:name="APIkit Console"/>
+    </flow>
+    <flow name="get:/brorders:br-order-sys-api-config">
+        <until-successful maxRetries="5" doc:name="Until Successful">
+            <http:request config-ref="HTTP_Request_Configuration" path="/order/{orderno}" method="DELETE" doc:name="HTTP">
+                <http:request-builder>
+                    <http:uri-param paramName="orderno" value="#[message.inboundProperties.'http.query.params'.orderid]"/>
+                </http:request-builder>
+                <http:success-status-code-validator values="200,400,401,404"/>
+            </http:request>
+        </until-successful>
+        <set-variable variableName="stcodwe" value="#[message.inboundProperties.'http.status']" doc:name="Variable"/>
+        <choice doc:name="Choice">
+            <when expression="">
+                <logger message="#[payload]" level="INFO" doc:name="Logger"/>
+            </when>
+            <otherwise>
+                <dw:transform-message doc:name="Transform Message">
+                    <dw:set-payload><![CDATA[%dw 1.0
+%output application/java
+---
+{
+	status: "FAILED"
+}]]></dw:set-payload>
+                </dw:transform-message>
+            </otherwise>
+        </choice>
+
+    </flow>
+    <flow name="post:/brorders:br-order-sys-api-config">
+        <set-payload value="#[message.payloadAs(java.lang.String)]" doc:name="Set Payload"/>
+        <set-variable variableName="orignal-payload" value="#[payload]" mimeType="application/json" doc:name="orignal-payload"/>
+        <http:request config-ref="HTTP_Request_Configuration" path="/order" method="POST" doc:name="HTTP"/>
+        <dw:transform-message doc:name="Transform Message" metadata:id="adb1aa8b-514a-4534-83a2-8e9ec5f314cd">
+            <dw:input-payload mimeType="application/json"/>
+            <dw:set-payload><![CDATA[%dw 1.0
+%output application/java
+---
+{
+	
+	status: payload.message.status,
+	orderid:"Order has been created for the " ++ flowVars.orignal-payload.orderNo
+
+}]]></dw:set-payload>
+        </dw:transform-message>
+        <logger message="------------------------------------------------------------Order related to #[payload.orderid ] Posted successfully" level="INFO" doc:name="Logger"/>
+        <choice-exception-strategy doc:name="Choice Exception Strategy">
+            <catch-exception-strategy when="#[exception.causeMatches('java.net.ConnectException')]" doc:name="Catch Exception Strategy">
+                <set-payload value="[&quot;Bamboo Rose Is Running Down !&quot;!" doc:name="Set Payload"/>
+                <logger message="BR down" level="INFO" doc:name="Logger"/>
+            </catch-exception-strategy>
+            <catch-exception-strategy when="#[exception.causeMatches('org.mule.module.http.internal.request.*')]" doc:name="Catch Exception Strategy">
+                <set-payload value="#['unauthrized request']" doc:name="Set Payload"/>
+            </catch-exception-strategy>
+            <catch-exception-strategy when="#[exception.causedExactlyBy('com.mulesoft.weave.*')] " doc:name="Catch Exception Strategy">
+                <set-payload value="#['Invalid Data']" doc:name="Set Payload"/>
+            </catch-exception-strategy>
+        </choice-exception-strategy>
+
+    </flow>
+    <apikit:mapping-exception-strategy name="br-order-sys-api-apiKitGlobalExceptionMapping">
+        <apikit:mapping statusCode="404">
+            <apikit:exception value="org.mule.module.apikit.exception.NotFoundException" />
+            <set-property propertyName="Content-Type" value="application/json" doc:name="Property"/>
+            <set-payload value="{ &quot;message&quot;: &quot;Resource not found&quot; }" doc:name="Set Payload"/>
+        </apikit:mapping>
+        <apikit:mapping statusCode="405">
+            <apikit:exception value="org.mule.module.apikit.exception.MethodNotAllowedException" />
+            <set-property propertyName="Content-Type" value="application/json" doc:name="Property"/>
+            <set-payload value="{ &quot;message&quot;: &quot;Method not allowed&quot; }" doc:name="Set Payload"/>
+        </apikit:mapping>
+        <apikit:mapping statusCode="415">
+            <apikit:exception value="org.mule.module.apikit.exception.UnsupportedMediaTypeException" />
+            <set-property propertyName="Content-Type" value="application/json" doc:name="Property"/>
+            <set-payload value="{ &quot;message&quot;: &quot;Unsupported media type&quot; }" doc:name="Set Payload"/>
+        </apikit:mapping>
+        <apikit:mapping statusCode="406">
+            <apikit:exception value="org.mule.module.apikit.exception.NotAcceptableException" />
+            <set-property propertyName="Content-Type" value="application/json" doc:name="Property"/>
+            <set-payload value="{ &quot;message&quot;: &quot;Not acceptable&quot; }" doc:name="Set Payload"/>
+        </apikit:mapping>
+        <apikit:mapping statusCode="400">
+            <apikit:exception value="org.mule.module.apikit.exception.BadRequestException" />
+            <set-property propertyName="Content-Type" value="application/json" doc:name="Property"/>
+            <set-payload value="{ &quot;message&quot;: &quot;Bad request&quot; }" doc:name="Set Payload"/>
+        </apikit:mapping>
+    </apikit:mapping-exception-strategy>
+</mule>

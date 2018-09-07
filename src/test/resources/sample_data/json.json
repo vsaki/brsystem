@@ -1,0 +1,17 @@
+{
+  "message": {
+    "status": "????",
+    "errorMess": "????",
+    "errorCode": "????"
+  },
+  "order": {
+    "orderNo": "????",
+    "items": [
+      {
+        
+      }
+    ],
+    "htsNo": "????",
+    "status": "????"
+  }
+}

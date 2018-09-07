@@ -1,0 +1,24 @@
+{
+  "message": {
+    "status": "success",
+    "errorMess": "",
+    "errorCode": ""
+  },
+  "order": {
+    "orderNo": "7",
+    "items": [
+      {
+        "itemName": "socks",
+        "itemcode": "S1123",
+        "quantity": 2
+      },
+      {
+        "itemName": "PShirt",
+        "itemcode": "PS112",
+        "quantity": 1
+      }
+    ], 
+    "htsNo": "QY765G",
+    "status": "V"
+  }
+}
